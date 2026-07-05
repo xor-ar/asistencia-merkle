@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auditor de Asistencia Criptográfico</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/merkletreejs@latest/merkletree.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen font-sans">
+
+    <div class="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8">
+        <header class="mb-8 text-center sm:text-left">
+            <h1 class="text-3xl font-extrabold text-gray-900 tracking-tight">Control de Asistencia Criptográfico (Zero-Knowledge)</h1>
+            <p class="text-gray-600 mt-1">Verificación automatizada y confidencialidad absoluta mediante árboles de Merkle.</p>
+        </header>
+
+        <div class="border-b border-gray-200 mb-6">
+            <nav class="flex space-x-4" aria-label="Tabs">
+                <button id="tabBtnCreate" onclick="switchTab('create')" class="border-b-2 border-indigo-600 text-indigo-600 px-4 py-2 text-sm font-medium focus:outline-none transition-all">
+                    Generar Árbol de Evento
+                </button>
+                <button id="tabBtnVerify" onclick="switchTab('verify')" class="border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 px-4 py-2 text-sm font-medium focus:outline-none transition-all">
+                    Verificar Presencia
+                </button>
+            </nav>
+        </div>
+
+        <div id="panelCreate" class="space-y-6">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">Parámetros del Evento</h2>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Descripción del Evento</label>
+                        <input type="text" id="eventDesc" placeholder="Ej. Auditoria Interna 2026" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Fecha del Evento</label>
+                        <input type="date" id="eventDate" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Listado de CUITs (Confidencial - No se guardará en el archivo descargable)</label>
+                    <textarea id="eventCuits" rows="6" placeholder="20-12345678-9&#10;27-98765432-1" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none font-mono text-sm"></textarea>
+                </div>
+
+                <button onclick="generateMerkleTree()" class="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2.5 rounded-lg transition shadow-sm">
+                    Calcular Estructura Criptográfica
+                </button>
+            </div>
+
+            <div id="creationResult" class="hidden bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-4">
+                <div>
+                    <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-1">Merkle Root (Raíz Criptográfica)</h3>
+                    <div id="rootHashDisplay" class="bg-gray-900 text-green-400 p-3 rounded-lg font-mono text-xs sm:text-sm break-all select-all"></div>
+                </div>
+
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <button onclick="downloadEventJs()" class="bg-green-600 hover:bg-green-700 text-white font-medium px-5 py-2.5 rounded-lg transition shadow-sm flex items-center justify-center gap-2">
+                        <span>Descargar Firma de Seguridad (.js)</span>
+                    </button>
+                </div>
+
+                <div class="bg-yellow-50 border border-yellow-200 p-4 rounded-lg text-sm text-yellow-900">
+                    <strong>Información de Privacidad:</strong> El archivo estructurado resultante contendrá las evidencias matemáticas necesarias (Proofs) vinculadas al hash de cada string. Los datos en texto plano han sido completamente omitidos.
+                </div>
+            </div>
+        </div>
+
+        <div id="panelVerify" class="hidden space-y-6">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">Origen de Evidencias Criptográficas</h2>
+                
+                <div class="mb-6">
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Cargar Archivo del Evento (.js)</label>
+                    <input type="file" id="uploadFile" accept=".js" onchange="handleFileUpload(event)" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer">
+                </div>
+
+                <div id="loadedEventInfo" class="hidden border-t border-gray-200 pt-4 mb-4 grid grid-cols-1 sm:grid-cols-3 gap-4 bg-gray-50 p-4 rounded-lg">
+                    <div>
+                        <span class="block text-xs font-semibold uppercase tracking-wider text-gray-400">Evento</span>
+                        <span id="vInfoDesc" class="text-sm font-medium text-gray-800">-</span>
+                    </div>
+                    <div>
+                        <span class="block text-xs font-semibold uppercase tracking-wider text-gray-400">Fecha</span>
+                        <span id="vInfoDate" class="text-sm font-medium text-gray-800">-</span>
+                    </div>
+                    <div>
+                        <span class="block text-xs font-semibold uppercase tracking-wider text-gray-400">Nodos Anónimos</span>
+                        <span id="vInfoLeaves" class="text-sm font-medium text-gray-800">-</span>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">CUIT / String a Validar</label>
+                    <input type="text" id="verifyInput" placeholder="Ingrese el CUIT a constatar (Ej: 20-12345678-9)" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                </div>
+
+                <button onclick="verifyAttendance()" class="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2.5 rounded-lg transition shadow-sm">
+                    Verificar Estado de Inclusión
+                </button>
+            </div>
+
+            <div id="verifyResult" class="hidden p-6 rounded-xl border transition-all">
+                <div class="flex items-start gap-3">
+                    <div id="verifyBadge" class="p-2 rounded-full text-white font-bold text-lg flex items-center justify-center w-8 h-8 shrink-0"></div>
+                    <div>
+                        <h3 id="verifyTitle" class="font-bold text-lg"></h3>
+                        <p id="verifyMsg" class="text-sm mt-1"></p>
+                    </div>
+                </div>
+                <div id="proofDetails" class="mt-4 pt-4 border-t hidden">
+                    <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Ruta de Evidencia (Merkle Proof)</h4>
+                    <pre id="proofVisual" class="bg-gray-900 text-gray-300 p-3 rounded-lg font-mono text-xs overflow-x-auto"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentEventData = null;
+        let loadedEventData = null;
+
+        const sha256Hash = (data) => CryptoJS.SHA256(data).toString();
+        const MerkleTreeClass = window.MerkleTree || (window.merkletreejs && window.merkletreejs.MerkleTree);
+
+        // Control de Pestañas
+        function switchTab(tab) {
+            const btnCreate = document.getElementById(`tabBtnCreate`);
+            const btnVerify = document.getElementById(`tabBtnVerify`);
+            const panelCreate = document.getElementById(`panelCreate`);
+            const panelVerify = document.getElementById(`panelVerify`);
+
+            if (tab === `create`) {
+                btnCreate.className = `border-b-2 border-indigo-600 text-indigo-600 px-4 py-2 text-sm font-medium focus:outline-none transition-all`;
+                btnVerify.className = `border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 px-4 py-2 text-sm font-medium focus:outline-none transition-all`;
+                panelCreate.classList.remove(`hidden`);
+                panelVerify.classList.add(`hidden`);
+            } else {
+                btnVerify.className = `border-b-2 border-indigo-600 text-indigo-600 px-4 py-2 text-sm font-medium focus:outline-none transition-all`;
+                btnCreate.className = `border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 px-4 py-2 text-sm font-medium focus:outline-none transition-all`;
+                panelVerify.classList.remove(`hidden`);
+                panelCreate.classList.add('hidden');
+            }
+        }
+
+        // Generar estructura del árbol Merkle
+        function generateMerkleTree() {
+            const desc = document.getElementById(`eventDesc`).value.trim();
+            const date = document.getElementById(`eventDate`).value.trim();
+            const cuitsText = document.getElementById(`eventCuits`).value;
+
+            if (!desc || !date) {
+                alert(`Por favor complete la descripción y la fecha del evento.`);
+                return;
+            }
+
+            const cuits = cuitsText.split(`\n`)
+                .map(line => line.trim())
+                .filter(line => line.length > 0);
+
+            const rawLeaves = [desc, date, ...cuits];
+            const hashedLeaves = rawLeaves.map(leaf => sha256Hash(leaf));
+
+            const tree = new MerkleTreeClass(hashedLeaves, sha256Hash, { sortPairs: true });
+            const rootHex = tree.getHexRoot();
+
+            // Mapa relacional: Clave = Hash del elemento, Valor = Prueba (Proof)
+            const proofsMap = {};
+            rawLeaves.forEach(leaf => {
+                const hash = sha256Hash(leaf);
+                proofsMap[hash] = tree.getHexProof(hash);
+            });
+
+            currentEventData = {
+                description: desc,
+                date: date,
+                root: rootHex,
+                proofs: proofsMap
+            };
+
+            document.getElementById(`rootHashDisplay`).innerText = rootHex;
+            document.getElementById(`creationResult`).classList.remove(`hidden`);
+        }
+
+        // Descarga en formato ejecutable .js para persistencia de datos globales
+        function downloadEventJs() {
+            if (!currentEventData) return;
+
+            const fileContent = `window.merkleEventData = ${JSON.stringify(currentEventData, null, 2)};`;
+            const dataStr = "data:text/javascript;charset=utf-8," + encodeURIComponent(fileContent);
+            const downloadAnchor = document.createElement(`a`);
+            const safeDate = currentEventData.date.replace(/[^a-zA-Z0-9]/g, `_`);
+            
+            downloadAnchor.setAttribute(`href`, dataStr);
+            downloadAnchor.setAttribute(`download`, `merkle_proofs_evento_${safeDate}.js`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        }
+
+        // Renderiza el cuadro informativo con los metadatos del archivo cargado
+        function displayLoadedMetadata() {
+            document.getElementById(`vInfoDesc`).innerText = loadedEventData.description;
+            document.getElementById(`vInfoDate`).innerText = loadedEventData.date;
+            document.getElementById(`vInfoLeaves`).innerText = Object.keys(loadedEventData.proofs).length;
+            document.getElementById(`loadedEventInfo`).classList.remove(`hidden`);
+        }
+
+        // Procesamiento cuando un operador sube manualmente el archivo .js
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const rawText = e.target.result;
+                    // Limpieza en caso de contener la cabecera de asignación de variable de ventana
+                    let jsonText = rawText.replace(/window\.merkleEventData\s*=\s*/, ``).trim();
+                    if (jsonText.endsWith(`;`)) {
+                        jsonText = jsonText.slice(0, -1).trim();
+                    }
+                    
+                    const parsed = JSON.parse(jsonText);
+                    if (!parsed.description || !parsed.date || !parsed.root || !parsed.proofs) {
+                        throw new Error(`La estructura del archivo .js no contiene un arbol Merkle valido.`);
+                    }
+                    
+                    loadedEventData = parsed;
+                    displayLoadedMetadata();
+                    document.getElementById(`verifyResult`).classList.add(`hidden`);
+                } catch (err) {
+                    alert(`Error al procesar el archivo script: ` + err.message);
+                    event.target.value = ``;
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // Validación algorítmica de presencia
+        function verifyAttendance() {
+            if (!loadedEventData) {
+                alert(`Debe cargar primero un archivo de datos del evento (.js) o pasarlo por URL.`);
+                return;
+            }
+
+            const targetString = document.getElementById(`verifyInput`).value.trim();
+            if (!targetString) {
+                alert(`Ingrese el CUIT o string a validar.`);
+                return;
+            }
+
+            const targetHash = sha256Hash(targetString);
+            const proof = loadedEventData.proofs[targetHash];
+
+            const resultPanel = document.getElementById(`verifyResult`);
+            const badge = document.getElementById(`verifyBadge`);
+            const title = document.getElementById('verifyTitle');
+            const msg = document.getElementById(`verifyMsg`);
+            const proofDetails = document.getElementById(`proofDetails`);
+            const proofVisual = document.getElementById(`proofVisual`);
+
+            if (!proof) {
+                resultPanel.className = `p-6 rounded-xl border bg-red-50 border-red-200 text-red-900 mt-6`;
+                badge.className = `p-2 rounded-full text-white font-bold text-lg flex items-center justify-center w-8 h-8 shrink-0 bg-red-600`;
+                badge.innerText = `✗`;
+                title.innerText = `AUSENTE / NO ENCONTRADO`;
+                msg.innerText = `El CUIT/String provisto no genera coincidencia con ninguna de las pruebas de inclusion almacenadas para este evento. No estuvo presente.`;
+                proofDetails.classList.add(`hidden`);
+                resultPanel.classList.remove(`hidden`);
+                return;
+            }
+
+            // Verificación matemática estática contra la raíz firmada
+            const isVerified = MerkleTreeClass.verify(proof, targetHash, loadedEventData.root, sha256Hash, { sortPairs: true });
+
+            if (isVerified) {
+                resultPanel.className = `p-6 rounded-xl border bg-green-50 border-green-200 text-green-900 mt-6`;
+                badge.className = `p-2 rounded-full text-white font-bold text-lg flex items-center justify-center w-8 h-8 shrink-0 bg-green-600`;
+                badge.innerText = `✓`;
+                title.innerText = `PRESENTE (VERIFICACIÓN OK)`;
+                msg.innerText = `La prueba matematica de inclusion es valida. Se constato su presencia e integridad estructural frente a la raiz inmutable, manteniendo el anonimato de la nomina general.`;
+                
+                proofVisual.innerText = JSON.stringify(proof, null, 2);
+                proofDetails.classList.remove(`hidden`);
+            } else {
+                resultPanel.className = `p-6 rounded-xl border bg-yellow-50 border-yellow-200 text-yellow-900 mt-6`;
+                badge.className = `p-2 rounded-full text-white font-bold text-lg flex items-center justify-center w-8 h-8 shrink-0 bg-yellow-600`;
+                badge.innerText = `!`;
+                title.innerText = `FALLO DE INTEGRIDAD`;
+                msg.innerText = `El nodo existe en el mapeo pero la firma computada no concuerda con la raiz del evento. El archivo .js ha sido alterado de forma externa.`;
+                proofDetails.classList.add(`hidden`);
+            }
+
+            resultPanel.classList.remove(`hidden`);
+        }
+
+        // Pipeline de automatización mediante lectura de parámetros GET en URL
+        window.addEventListener(`DOMContentLoaded`, () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const fileParam = urlParams.get(`file`);
+            const cuitParam = urlParams.get(`cuit`);
+
+            if (fileParam) {
+                switchTab(`verify`);
+                
+                // Inyección dinámica de la firma criptográfica mediante elemento Script
+                const scriptNode = document.createElement(`script`);
+                scriptNode.src = fileParam;
+                
+                scriptNode.onload = function() {
+                    if (window.merkleEventData) {
+                        loadedEventData = window.merkleEventData;
+                        displayLoadedMetadata();
+                        
+                        if (cuitParam) {
+                            document.getElementById(`verifyInput`).value = cuitParam;
+                            verifyAttendance();
+                        }
+                    } else {
+                        alert(`El archivo script no expone el objeto global 'window.merkleEventData'.`);
+                    }
+                };
+                
+                scriptNode.onerror = function() {
+                    alert(`No fue posible cargar el archivo .js definido por URL en la ruta actual: ` + fileParam);
+                };
+                
+                document.head.appendChild(scriptNode);
+            }
+        });
+    </script>
+</body>
+</html>
